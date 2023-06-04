@@ -8,12 +8,14 @@ const AdminHome = () => {
   const [isAuth, setIsAuth] = useState(true);
   const [orgs, setOrgs] = useState([]);
   const [admin, setAdmin] = useState("");
+  const [users, setUsers] = useState([]);
 
   useEffect(() => {
     // Fetch files on component mount
     fetchFiles();
     fetchOrg();
     fetchAdmin();
+    fetchUser();
   }, []);
 
   const fetchFiles = () => {
@@ -51,6 +53,21 @@ const AdminHome = () => {
       });
   };
 
+  const handleUserApproval = (id) => {
+    axios
+      .get(`http://localhost:5000/users/approve/${id}`, {
+        headers: {
+          Authorization: localStorage.getItem("token"),
+        },
+      })
+      .then((res) => {
+        fetchFiles();
+      })
+      .catch((err) => {
+        console.error(err);
+      });
+  };
+
   const handleApproval = (id) => {
     axios
       .get(`http://localhost:5000/orgs/approve/${id}`, {
@@ -80,6 +97,39 @@ const AdminHome = () => {
       .catch((error) => {
         setIsAuth(false);
         console.error(error);
+      });
+  };
+
+  const fetchUser = () => {
+    axios
+      .get("http://localhost:5000/users", {
+        headers: {
+          Authorization: localStorage.getItem("token"),
+        },
+      })
+      .then((res) => {
+        console.log(res.data);
+        setUsers(res.data);
+        setIsAuth(true);
+      })
+      .catch((error) => {
+        setIsAuth(false);
+        console.error(error);
+      });
+  };
+
+  const handleCertificateView = (id) => {
+    axios
+      .get(`http://localhost:5000/user/certificate/${id}`, {
+        headers: {
+          Authorization: localStorage.getItem("token"),
+        },
+      })
+      .then((res) => {
+        console.log(res.data);
+      })
+      .catch((err) => {
+        console.error(err);
       });
   };
   return (
@@ -123,6 +173,45 @@ const AdminHome = () => {
                     href=""
                     className="btn btn-danger"
                     onClick={() => handleApproval(org._id)}
+                  >
+                    Approve
+                  </a>
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="user-section">
+        <h2>Users</h2>
+        {users.map((user) => (
+          <div
+            key={user._id}
+            className="card"
+            style={{ width: "24rem", margin: "3rem" }}
+          >
+            <div className="card-body">
+              <h5 className="card-title">{user.name}</h5>
+              <h6>{user.email}</h6>
+              <br />
+              <a
+                href=""
+                className="btn btn-secondary"
+                onClick={() => handleCertificateView(user._id)}
+              >
+                Download Certificate
+              </a>
+              <br />
+              {user.isApproved === true ? (
+                <p>Status - Approved by the admin</p>
+              ) : (
+                <div>
+                  <p>Status - Not Approved</p>
+                  <a
+                    href=""
+                    className="btn btn-danger"
+                    onClick={() => handleUserApproval(user._id)}
                   >
                     Approve
                   </a>

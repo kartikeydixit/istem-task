@@ -11,7 +11,6 @@ const path = require("path");
 const { v4: uuidv4 } = require("uuid");
 const AWS = require("aws-sdk");
 
-// Configure AWS SDK with your credentials
 AWS.config.update({
   accessKeyId: "AKIATRWTDP7N665Q5V5Y",
   secretAccessKey: "G7hLHGw6XwVaQfhsCh11WKI5Ne1SAl7b8IMuKb+V",
@@ -53,7 +52,7 @@ mongoose
   .then(() => console.log("Connected to MongoDB"))
   .catch((err) => console.error("Failed to connect to MongoDB:", err));
 
-// Middleware for user authentication
+// Middleware for org authentication
 const authenticateOrg = (req, res, next) => {
   const token = req.headers.authorization;
   if (!token) {
@@ -71,7 +70,9 @@ const authenticateOrg = (req, res, next) => {
   }
 };
 
+// Middleware for admin authentication
 const authenticateAdmin = (req, res, next) => {
+  console.log("at authenticateAdmin");
   const token = req.headers.authorization;
   if (!token) {
     console.log("unathorize");
@@ -81,21 +82,26 @@ const authenticateAdmin = (req, res, next) => {
   try {
     const decoded = jwt.verify(token, "secret-key");
     req.admin = decoded.admin;
+    console.log("going next");
     next();
   } catch (err) {
-    // console.log("here");
+    console.log("error");
     return res.status(401).json({ message: "Invalid token" });
   }
 };
 
+// Middleware for user authentication
 const authenticateUser = (req, res, next) => {
+  // console.log(req);
   const token = req.headers.authorization;
+  console.log("token : ", token);
   if (!token) {
     console.log("unathorize");
     return res.status(401).json({ message: "Unauthorized" });
   }
 
   try {
+    console.log("inside try block");
     const decoded = jwt.verify(token, "secret-key");
     req.user = decoded.user;
     next();
@@ -138,15 +144,40 @@ app.post("/admin/register", async (req, res) => {
 });
 
 //Register a new User
-app.post("/user/register", async (req, res) => {
+app.post("/user/register", upload.single("file"), async (req, res) => {
   try {
+    if (!req.file) {
+      return res.status(400).json({ message: "File not found" });
+    }
+
+    const filename = req.file.originalname;
+    const fileData = req.file.buffer;
+    const key = `${uuidv4()}-${filename}`;
+    const params = {
+      Bucket: "istem-bucket-public",
+      Key: `certificates/${key}`,
+      Body: fileData,
+      ACL: "public-read",
+    };
+
+    s3.upload(params, (err, data) => {
+      if (err) {
+        console.error(err);
+        return res.status(500).json({ message: "Internal server error" });
+      }
+
+      res.status(200).json({ message: "Certificate uploaded successfully" });
+    });
     const { name, email, password } = req.body;
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
-    const user = new User({ name, email, password: hashedPassword });
+    const user = new User({
+      name: name,
+      email: email,
+      password: hashedPassword,
+      s3_key: key,
+    });
     await user.save();
-
-    res.status(201).json({ message: "User registered successfully" });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Internal Server error" });
@@ -229,6 +260,7 @@ app.post(
   authenticateOrg,
   upload.single("file"),
   async (req, res) => {
+    console.log(req.file);
     try {
       if (!req.file) {
         return res.status(400).json({ message: "No file uploaded" });
@@ -242,7 +274,7 @@ app.post(
           .json({ message: "This org is not approved by admin" });
       }
 
-      console.log("still coming here");
+      // console.log("still coming here");
       const filename = req.file.originalname;
       const fileData = req.file.buffer;
       const key = `${uuidv4()}-${filename}`;
@@ -290,6 +322,7 @@ app.get("/files", async (req, res) => {
   }
 });
 
+// Get all files for a particular org
 app.get("/files/org", authenticateOrg, async (req, res) => {
   try {
     const files = await File.find({ owner: req.org });
@@ -305,6 +338,18 @@ app.get("/orgs", authenticateAdmin, async (req, res) => {
   try {
     const orgs = await Org.find();
     res.json(orgs);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// Get all users
+app.get("/users", authenticateAdmin, async (req, res) => {
+  try {
+    const users = await User.find();
+    // console.log(users);
+    res.json(users);
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Internal server error" });
@@ -331,6 +376,87 @@ app.get("/orgs/approve/:id", authenticateAdmin, async (req, res) => {
     });
 });
 
+// Approve an user by id
+app.get("/users/approve/:id", authenticateAdmin, async (req, res) => {
+  console.log("comming here to approve");
+  User.findByIdAndUpdate(
+    req.params.id,
+    {
+      isApproved: true,
+    },
+    {
+      new: true,
+    }
+  )
+    .then((updatedUser) => {
+      console.log(updatedUser);
+      res.json(updatedUser);
+    })
+    .catch((err) => {
+      console.error(err);
+    });
+});
+
+// View a given user's certificate
+app.get("/user/certificate/:id", authenticateAdmin, async (req, res) => {
+  console.log("ariving at this route");
+  try {
+    const user = await User.findById(req.params.id);
+
+    const s3_key = `certificates/${user.s3_key}`;
+
+    let downloadFolder;
+    switch (os.platform()) {
+      case "win32":
+        downloadFolder = path.join(os.homedir(), "Downloads");
+        break;
+      case "darwin":
+        downloadFolder = path.join(os.homedir(), "Downloads");
+        break;
+      case "linux":
+        downloadFolder = path.join(os.homedir(), "Downloads");
+        break;
+      default:
+        console.error("Unsupported operating system");
+        return;
+    }
+
+    const params = {
+      Bucket: "istem-bucket-public",
+      Key: s3_key,
+    };
+
+    const destinationPath = path.join(
+      downloadFolder,
+      `${uuidv4()}-${user.name}.pdf`
+    );
+
+    const downloadedFile = require("fs").createWriteStream(destinationPath);
+
+    s3.getObject(params)
+      .createReadStream()
+      .on("error", (err) => {
+        console.error("Failed to download file from S3:", err);
+        callback(err);
+      })
+      .pipe(downloadedFile)
+      .on("finish", () => {
+        console.log("File downloaded from S3");
+        res.set({
+          "Content-Disposition": `attachment; filename=${encodeURIComponent(
+            user.name
+          )}`,
+          "Content-Type": "application/octet-stream",
+        });
+
+        // callback(null, destinationPath);
+      });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
 // Get a specific file
 app.get("/files/:id", authenticateUser, async (req, res) => {
   try {
@@ -352,10 +478,17 @@ app.get("/files/:id", authenticateUser, async (req, res) => {
 
 // Get files from query
 app.post("/files/search", authenticateUser, async (req, res) => {
-  console.log("hiii");
-  console.log(req.body);
   const searchQuery = req.body.searchQuery;
 
+  const user = await User.findById(req.user).exec();
+  console.log("user: ", user);
+  if (user.isApproved === false) {
+    console.log("isApproved is false");
+    return res
+      .status(401)
+      .json({ message: "This org is not approved by admin" });
+  }
+  console.log("still coming here");
   try {
     const searchResult = await File.find({
       filename: { $regex: new RegExp(searchQuery, "i") },
@@ -405,6 +538,10 @@ app.get("/download/files/:id", authenticateUser, async (req, res) => {
     );
 
     const downloadedFile = require("fs").createWriteStream(destinationPath);
+
+    console.log("os: ", os.platform());
+    console.log("homedir: ", os.homedir());
+    console.log("donwloadedFolder: ", downloadFolder);
 
     s3.getObject(params)
       .createReadStream()
@@ -486,6 +623,7 @@ app.delete("/files/:id", authenticateUser, async (req, res) => {
   }
 });
 
+//get a specifc admin
 app.get("/admin", authenticateAdmin, async (req, res) => {
   try {
     const admin = await Admin.findById(req.admin);
@@ -500,6 +638,7 @@ app.get("/admin", authenticateAdmin, async (req, res) => {
   }
 });
 
+//get a specific user
 app.get("/user", authenticateUser, async (req, res) => {
   try {
     const user = await User.findById(req.user);
@@ -514,6 +653,7 @@ app.get("/user", authenticateUser, async (req, res) => {
   }
 });
 
+//get a specific org
 app.get("/org", authenticateOrg, async (req, res) => {
   try {
     const org = await Org.findById(req.org);

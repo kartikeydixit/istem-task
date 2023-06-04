@@ -7,19 +7,27 @@ const UserRegister = () => {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [selectedFile, setSelectedFile] = useState(null);
 
-  const handleSubmit = async (e) => {
+  const handleFileChange = (event) => {
+    setSelectedFile(event.target.files[0]);
+  };
+  const handleSubmit = (e) => {
     e.preventDefault();
 
-    const param = {
-      name: name,
-      email: email,
-      password: password,
-    };
+    const formData = new FormData();
+
+    formData.append("file", selectedFile);
+    formData.append("name", name);
+    formData.append("email", email);
+    formData.append("password", password);
+    // console.log(selectedFile);
+    console.log("Now lets see formData");
+    console.log(formData.get("file"));
     axios
-      .post("http://localhost:5000/user/register", param, {
+      .post("http://localhost:5000/user/register", formData, {
         headers: {
-          "Content-Type": "application/json",
+          "Content-Type": "multipart/form-data",
         },
       })
       .then((response) => {
@@ -35,27 +43,35 @@ const UserRegister = () => {
   return (
     <div>
       <h2>Register As User</h2>
-      <form onSubmit={handleSubmit}>
-        <input
-          type="text"
-          placeholder="Name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
-        <input
-          type="email"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
-        <input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
-        <button type="submit">Register</button>
-      </form>
+      <input
+        type="text"
+        placeholder="name"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+      />
+      <br />
+      <input
+        type="email"
+        placeholder="email"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+      />
+      <br />
+      <input
+        type="password"
+        placeholder="password"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+      />
+      <br />
+      <br />
+
+      <label>Upload your certificate here</label>
+      <br />
+      <input type="file" onChange={handleFileChange} />
+      <br />
+      <br />
+      <button onClick={handleSubmit}>Submit</button>
     </div>
   );
 };

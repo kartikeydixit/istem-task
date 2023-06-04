@@ -12,16 +12,21 @@ const UserHome = () => {
   useEffect(() => {
     // Fetch files on component mount
     fetchFiles();
+    // handleSearch();
     fetchUser();
   }, []);
 
   const fetchFiles = () => {
     axios
-      .get("http://localhost:5000/files", {
-        headers: {
-          Authorization: localStorage.getItem("token"),
-        },
-      })
+      .post(
+        "http://localhost:5000/files/search",
+        { searchQuery: "" },
+        {
+          headers: {
+            Authorization: localStorage.getItem("token"),
+          },
+        }
+      )
       .then((response) => {
         console.log(`response data is here : ${JSON.stringify(response.data)}`);
         setFiles(response.data);
@@ -52,6 +57,7 @@ const UserHome = () => {
 
   const handleSearch = (e) => {
     e.preventDefault();
+
     axios
       .post(
         "http://localhost:5000/files/search",
@@ -65,9 +71,12 @@ const UserHome = () => {
       .then((res) => {
         setSearchResults(res.data);
         setFiles(res.data);
+        setIsAuth(true);
         console.log(res.data);
       })
-      .catch((err) => {});
+      .catch((err) => {
+        setIsAuth(false);
+      });
   };
   return (
     <div>
@@ -95,7 +104,11 @@ const UserHome = () => {
             />
           </div>
         ))}
-        {/*isAuth === false ? <>You are not authorized</> : <></>*/}
+        {isAuth === false ? (
+          <>You are not authorized or you are not approved by the admin</>
+        ) : (
+          <></>
+        )}
       </div>
     </div>
   );
