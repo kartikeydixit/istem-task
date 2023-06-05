@@ -8,6 +8,9 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
+const nodemailer = require("nodemailer");
+const { google } = require("googleapis");
+
 const { v4: uuidv4 } = require("uuid");
 const AWS = require("aws-sdk");
 
@@ -119,7 +122,14 @@ app.post("/org/register", async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, salt);
     const org = new Org({ orgName, email, password: hashedPassword });
     await org.save();
-
+    const admin = await Admin.findOne();
+    const param = {
+      type: "Org",
+      name: orgName,
+      recieverEmail: email,
+      adminEmail: admin.email,
+    };
+    sendVerificationRequest(param);
     res.status(201).json({ message: "Org registered successfully" });
   } catch (err) {
     console.error(err);
@@ -178,6 +188,15 @@ app.post("/user/register", upload.single("file"), async (req, res) => {
       s3_key: key,
     });
     await user.save();
+
+    const admin = await Admin.findOne();
+    const param = {
+      type: "User",
+      name: name,
+      recieverEmail: email,
+      adminEmail: admin.email,
+    };
+    sendVerificationRequest(param);
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Internal Server error" });
@@ -369,6 +388,7 @@ app.get("/orgs/approve/:id", authenticateAdmin, async (req, res) => {
   )
     .then((updatedOrg) => {
       console.log(updatedOrg);
+      sendApprovalEmail(updatedOrg.email);
       res.json(updatedOrg);
     })
     .catch((err) => {
@@ -390,6 +410,7 @@ app.get("/users/approve/:id", authenticateAdmin, async (req, res) => {
   )
     .then((updatedUser) => {
       console.log(updatedUser);
+      sendApprovalEmail(updatedUser.email);
       res.json(updatedUser);
     })
     .catch((err) => {
@@ -667,6 +688,70 @@ app.get("/org", authenticateOrg, async (req, res) => {
     res.status(500).json({ message: "Internal server error" });
   }
 });
+
+// Function to notify the user/org , their account is verified by the admin
+async function sendApprovalEmail(recieverEmail) {
+  // let testAccount = await nodemailer.createTestAccount();
+
+  let transporter = nodemailer.createTransport({
+    // host: "smtp.ethereal.email",
+    // port: 587,
+    service: "gmail",
+    auth: {
+      // user: "ephraim85@ethereal.email",
+      // pass: "HsKC3QUGhDRzUW5g1A",
+
+      user: "dixitkartikey1401@gmail.com",
+      pass: "fmltyhwysekmvddt",
+    },
+  });
+
+  const mailOptions = {
+    from: "dixitkartikey1401@gmail.com",
+    to: recieverEmail,
+    subject: "Your account has been approved!!!",
+    text: "Congratulations! Your account has been approved by the admin for the istem library.",
+  };
+
+  transporter.sendMail(mailOptions, (error, info) => {
+    if (error) {
+      console.log("Error sending email:", error);
+    } else {
+      console.log("Email send:", info.response);
+    }
+  });
+}
+
+// Function to notify the admin that there is new entries in the webiste , please verify
+async function sendVerificationRequest(param) {
+  let transporter = nodemailer.createTransport({
+    // host: "smtp.ethereal.email",
+    // port: 587,
+    service: "gmail",
+    auth: {
+      // user: "ephraim85@ethereal.email",
+      // pass: "HsKC3QUGhDRzUW5g1A",
+
+      user: "dixitkartikey1401@gmail.com",
+      pass: "fmltyhwysekmvddt",
+    },
+  });
+
+  const mailOptions = {
+    from: "dixitkartikey1401@gmail.com",
+    to: param.adminEmail,
+    subject: "New Account is Created , Please Verify!",
+    text: `A new ${param.type} is Created by the name of ${param.name}. Please Verify`,
+  };
+
+  transporter.sendMail(mailOptions, (error, info) => {
+    if (error) {
+      console.log("Error sending email:", error);
+    } else {
+      console.log("Email send:", info.response);
+    }
+  });
+}
 
 // Start the server
 const port = process.env.PORT || 5000;
